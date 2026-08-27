@@ -371,6 +371,7 @@ sgl-eval run gsm8k \\
         "--model-path {{MODEL_NAME}}",
         "--tp-size 8",
         "--ep-size 8",
+        "--mem-fraction-static 0.75",
         "--dsa-prefill-backend tilelang",
         "--dsa-decode-backend tilelang",
         "--kv-cache-dtype bfloat16",
