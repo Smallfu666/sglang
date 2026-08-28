@@ -61,6 +61,31 @@ export const config = {
   specCollapses(s) {
     return config.isPipelined(s) && !!(config.cellFor(s) || {}).specCollapsePp;
   },
+  // The tier's flag rewrite and its disable reason have to read the same
+  // answer: a reason naming the DCP startup check, on a selection where the
+  // tier had already dropped DCP, points at a check the rendered command never
+  // reaches.
+  dropsDcp(s, tier) {
+    return config.hasDcp(s) && (tier === "l3" || s.spec !== "none");
+  },
+  // The decode role pins its KV cache to chunk cache, so no HiCache tier is
+  // reachable there in the current build. Three separate checks enforce that
+  // and each wants something different from the reader, so the reason has to
+  // follow the selection rather than the option.
+  //
+  // Re-measure if #36686 ("decode radix cache and spec compitable") lands: it
+  // deletes the speculative-decoding rejection the first branch names. The
+  // other two branches are independent of it.
+  decodeHicacheReason(s, tier) {
+    if (s.pdMode !== "decode") return "";
+    if (s.spec !== "none") {
+      return "PD decode serves its KV cache as chunk cache, and the decode radix-cache opt-in HiCache would need is rejected under speculative decoding. Run this recipe NOSPEC, or switch PD Mode to Unified.";
+    }
+    if (config.hasDcp(s) && !config.dropsDcp(s, tier)) {
+      return "PD decode under DCP requires chunk cache and rejects --enable-hierarchical-cache at startup. Switch PD Mode to Unified, or pick a recipe that does not run DCP.";
+    }
+    return "Decode-side HiCache is not validated for K3: the Kimi-K3 roadmap still lists Hi-cache as unfinished, and the decode radix-cache flag it would need announces itself as EXPERIMENTAL. Switch PD Mode to Unified.";
+  },
   // The playground's chip `disable` is declarative only (no predicates), so the
   // DCP-carrying recipes are enumerated — but generated from the cells here
   // rather than typed out per platform, so it is the same single source of truth
@@ -348,10 +373,10 @@ export const config = {
         {
           id: "l2",
           label: "L1+L2 (host)",
-          disabled: (s) => s.hw === "a3",
+          disabled: (s) => s.hw === "a3" || s.pdMode === "decode",
           disableReason: (s) => (s.hw === "a3"
             ? "NPU HiCache does not support mamba cache (K3's KDA state is one)."
-            : ""),
+            : config.decodeHicacheReason(s, "l2")),
           flags: [
             "--enable-hierarchical-cache",
           ],
@@ -365,11 +390,11 @@ export const config = {
           // Which cells carry DCP is read off the cells themselves, so adding or
           // reshaping a DCP recipe needs no edit here.
           stripPrefixes: (s) =>
-            s.spec !== "none" && config.hasDcp(s)
+            config.dropsDcp(s, "l2")
               ? ["--dcp-size", "--dcp-comm-backend"]
               : [],
           hints: (s) =>
-            s.spec !== "none" && config.hasDcp(s)
+            config.dropsDcp(s, "l2")
               ? [
                   "HiCache under DCP rejects speculative decoding, so this recipe drops DCP",
                   "and serves the MLA KV TP-replicated (any PP/EP in the cell stays).",
@@ -381,10 +406,10 @@ export const config = {
         {
           id: "l3",
           label: "+ L3 (Mooncake)",
-          disabled: (s) => s.hw === "a3",
+          disabled: (s) => s.hw === "a3" || s.pdMode === "decode",
           disableReason: (s) => (s.hw === "a3"
             ? "NPU HiCache does not support mamba cache (K3's KDA state is one)."
-            : ""),
+            : config.decodeHicacheReason(s, "l3")),
           flags: [
             "--enable-hierarchical-cache",
             "--hicache-storage-backend mooncake",
@@ -396,16 +421,13 @@ export const config = {
           // cell stays, so on B200 the result is not plain TP). The ratio
           // calculator reads --dcp-size off this command, so dropping it also
           // re-solves --mamba-full-memory-ratio for the plain-TP shape.
-          //
-          // Same cell-derived DCP test as the L1+L2 option above, except this one
-          // fires NOSPEC too rather than only under speculation.
           stripPrefixes: (s) =>
-            config.hasDcp(s) ? ["--dcp-size", "--dcp-comm-backend"] : [],
+            config.dropsDcp(s, "l3") ? ["--dcp-size", "--dcp-comm-backend"] : [],
           hints: (s) =>
             [
               "L3 also needs a mooncake_master process on rank 0 and the config file",
               "above present on every rank — the launch command alone is not enough.",
-              ...(config.hasDcp(s)
+              ...(config.dropsDcp(s, "l3")
                 ? [
                     "L3 storage keys are not dcp_rank-aware yet, so this recipe drops DCP",
                     "and serves the MLA KV TP-replicated (any PP/EP in the cell stays).",
