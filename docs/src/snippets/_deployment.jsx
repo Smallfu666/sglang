@@ -24,9 +24,10 @@
 //                      an option that runs but sits outside the verified matrix
 //                      should declare `soft` instead — it stays selectable and
 //                      announces itself as unverified (tooltip + in-cell note).
-//                      A blocked option surfaces its disableReason through the
-//                      title tooltip alone: it also leaves the tab order, and
-//                      the tap-to-reveal note under the row is commandBuilder-only.
+//                      For matchDims rows, blocked options leave the tab order
+//                      and expose disableReason only through the title tooltip.
+//                      The tap-to-reveal note is available only in the
+//                      commandBuilder renderer.
 //   overlayDims        optional — rows that do NOT participate in cell lookup; the
 //                      picked option layers onto the matched cell, so an orthogonal
 //                      knob does not multiply the cell count. Same option shape plus
