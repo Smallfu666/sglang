@@ -86,10 +86,12 @@ class TestStandaloneDraftMoeRunnerBackend(StandaloneServerBase, CustomTestCase):
         )
         res.raise_for_status()
         self.assertTrue(res.json()["text"])
-        internal = requests.get(self.base_url + "/server_info").json()
-        accept_length = internal["internal_states"][0]["avg_spec_accept_length"]
+        # Per-request meta_info: /server_info omits avg_spec_accept_length until
+        # a decode-log interval has elapsed, which one short request never reaches.
+        meta = res.json()["meta_info"]
+        self.assertGreater(meta["spec_verify_ct"], 0)
         # 1.0 is the bonus token alone; a self-draft that accepts nothing is broken.
-        self.assertGreater(accept_length, 1.0)
+        self.assertGreater(meta["completion_tokens"] / meta["spec_verify_ct"], 1.0)
 
 
 if __name__ == "__main__":
