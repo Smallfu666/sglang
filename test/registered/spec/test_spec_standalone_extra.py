@@ -89,9 +89,16 @@ class TestStandaloneDraftMoeRunnerBackend(StandaloneServerBase, CustomTestCase):
         # Per-request meta_info: /server_info omits avg_spec_accept_length until
         # a decode-log interval has elapsed, which one short request never reaches.
         meta = res.json()["meta_info"]
+        print(
+            f"spec_verify_ct={meta.get('spec_verify_ct')} "
+            f"spec_num_correct_drafts={meta.get('spec_num_correct_drafts')} "
+            f"completion_tokens={meta.get('completion_tokens')}"
+        )
         self.assertGreater(meta["spec_verify_ct"], 0)
-        # 1.0 is the bonus token alone; a self-draft that accepts nothing is broken.
-        self.assertGreater(meta["completion_tokens"] / meta["spec_verify_ct"], 1.0)
+        # completion_tokens / spec_verify_ct stays above 1.0 even when no draft is
+        # accepted, because the prefill token is not a verify step; count the
+        # accepted drafts instead. A self-draft that accepts none is broken.
+        self.assertGreater(meta["spec_num_correct_drafts"], 0)
 
 
 if __name__ == "__main__":
