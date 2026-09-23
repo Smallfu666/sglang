@@ -72,11 +72,14 @@ class StandaloneDraftWorker(EagleDraftWorker):
             self.speculative_num_steps * self.topk, self.speculative_num_draft_tokens
         )
 
-        # Load draft model weights only. The standalone draft is a real model
-        # whose MoE gates run during construction; the scope routes their
-        # fusion decision to the speculative leaf (it does not swap
-        # runner_backend — the draft's forwards run outside that context).
-        with draft_pp_context(), draft_model_build_scope():
+        # Build under the speculative MoE backend: the draft's quant methods
+        # latch it here, while its forwards read it per call inside
+        # speculative_moe_backend_context.
+        with (
+            draft_pp_context(),
+            speculative_moe_backend_context(),
+            draft_model_build_scope(),
+        ):
             self.draft_worker = TpModelWorker(
                 server_args=server_args,
                 gpu_id=gpu_id,
