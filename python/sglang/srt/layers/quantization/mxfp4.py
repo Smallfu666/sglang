@@ -506,9 +506,13 @@ class Mxfp4MoEMethod(FusedMoEMethodBase):
             # processor can exclude the never-written tail from Humming's
             # per-expert scale range.
             self._unpadded_hidden = getattr(layer, "hidden_size_unpadded", hidden_size)
-            # create_weights below uses the *unpadded* sizes so the loader's
-            # naive-copy fast path is correct.
-            intermediate_size_per_partition_after_pad = intermediate_size_per_partition
+            # create_weights below aligns only to the mxfp4 block: gpt_oss.py
+            # shards by whole blocks, so a rank's slice can exceed
+            # intermediate_size / tp (736 vs 720 at tp=4). The extra rows are
+            # zero and trail the interleaved pairs.
+            intermediate_size_per_partition_after_pad = round_up(
+                intermediate_size_per_partition, mxfp4_block
+            )
         elif self.use_aiter_moe:
             # Expert intermediate is padded to 128 or 256. On K3 (TP8) the 256
             # default costs +33% mem (3072/8=384 -> 512). K3 FlyDSL MoE works with
